@@ -33,6 +33,8 @@ android {
       storePassword = "android"
       keyAlias = "androiddebugkey"
       keyPassword = "android"
+      isV1SigningEnabled = true
+      isV2SigningEnabled = true
     }
   }
 
@@ -41,7 +43,12 @@ android {
       isCrunchPngs = false
       isMinifyEnabled = false
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-      signingConfig = signingConfigs.getByName("release")
+      val hasReleaseEnv = !System.getenv("STORE_PASSWORD").isNullOrEmpty()
+      signingConfig = if (hasReleaseEnv) {
+        signingConfigs.getByName("release")
+      } else {
+        signingConfigs.getByName("debugConfig")
+      }
     }
     debug {
       signingConfig = signingConfigs.getByName("debugConfig")
@@ -120,27 +127,43 @@ dependencies {
   "ksp"(libs.moshi.kotlin.codegen)
 }
 
-val buildDirSource = layout.buildDirectory.dir("outputs/apk/debug")
+val buildDirSourceDebug = layout.buildDirectory.dir("outputs/apk/debug")
+val buildDirSourceRelease = layout.buildDirectory.dir("outputs/apk/release")
 val rootDirFile = rootDir
 
 tasks.register("copyApkToAssets") {
-    dependsOn("assembleDebug")
+    dependsOn("assembleDebug", "assembleRelease")
     
-    val sourceFile = buildDirSource.map { it.file("app-debug.apk") }
     val destDir = rootDirFile.resolve("assets")
     
-    inputs.file(sourceFile)
-    outputs.dir(destDir)
-    
     doLast {
-        val apkFile = sourceFile.get().asFile
-        if (apkFile.exists()) {
-            destDir.mkdirs()
-            val targetFile = File(destDir, "app-debug.apk")
-            apkFile.copyTo(targetFile, overwrite = true)
-            println("=== APK successfully copied to: assets/app-debug.apk ===")
-        } else {
-            throw GradleException("Source APK not found at ${apkFile.absolutePath}")
+        destDir.mkdirs()
+        
+        val debugApk = buildDirSourceDebug.get().file("app-debug.apk").asFile
+        if (debugApk.exists()) {
+            val targetDebug = File(destDir, "app-debug.apk")
+            debugApk.copyTo(targetDebug, overwrite = true)
+            println("=== Debug APK successfully copied to: assets/app-debug.apk ===")
+        }
+        
+        val releaseDir = buildDirSourceRelease.get().asFile
+        var copiedRelease = false
+        if (releaseDir.exists()) {
+            val possibleApks = listOf("app-release.apk", "app-release-unsigned.apk")
+            for (apkName in possibleApks) {
+                val releaseApk = File(releaseDir, apkName)
+                if (releaseApk.exists()) {
+                    val targetRelease = File(destDir, "app-release.apk")
+                    releaseApk.copyTo(targetRelease, overwrite = true)
+                    println("=== Release APK ($apkName) successfully copied to: assets/app-release.apk ===")
+                    copiedRelease = true
+                    break
+                }
+            }
+        }
+        
+        if (!copiedRelease) {
+            println("--- Warning: Release APK was not found or built ---")
         }
     }
 }
