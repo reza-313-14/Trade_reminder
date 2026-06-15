@@ -119,3 +119,28 @@ dependencies {
   "ksp"(libs.androidx.room.compiler)
   "ksp"(libs.moshi.kotlin.codegen)
 }
+
+val buildDirSource = layout.buildDirectory.dir("outputs/apk/debug")
+val rootDirFile = rootDir
+
+tasks.register("copyApkToAssets") {
+    dependsOn("assembleDebug")
+    
+    val sourceFile = buildDirSource.map { it.file("app-debug.apk") }
+    val destDir = rootDirFile.resolve("assets")
+    
+    inputs.file(sourceFile)
+    outputs.dir(destDir)
+    
+    doLast {
+        val apkFile = sourceFile.get().asFile
+        if (apkFile.exists()) {
+            destDir.mkdirs()
+            val targetFile = File(destDir, "app-debug.apk")
+            apkFile.copyTo(targetFile, overwrite = true)
+            println("=== APK successfully copied to: assets/app-debug.apk ===")
+        } else {
+            throw GradleException("Source APK not found at ${apkFile.absolutePath}")
+        }
+    }
+}
